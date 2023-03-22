@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { db } from './firebaseConnection';
-import { 
+import { db, auth } from './firebaseConnection';
+import {
   doc,
   setDoc,
   collection,
@@ -10,19 +10,32 @@ import {
   updateDoc,
   deleteDoc,
   onSnapshot
-  } from 'firebase/firestore'
+} from 'firebase/firestore'
+
+import {
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+ } from 'firebase/auth'
 
 import './app.css';
 
 function App() {
   const [titulo, setTitulo] = useState('');
   const [autor, setAutor] = useState('');
-  const [idPost, setIdPost] = useState('')
+  const [idPost, setIdPost] = useState('');
 
-  const [posts, setPosts] =useState([]);
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+
+  const [user, setUser] = useState(false);
+  const [userDetail, setUserDetail] = useState({})
+
+  const [posts, setPosts] = useState([]);
 
   useEffect(() => {
-    async function loadPosts(){
+    async function loadPosts() {
       const unsub = onSnapshot(collection(db, "posts"), (snapshot) => {
         let listaPost = [];
         snapshot.forEach((doc) => {
@@ -38,7 +51,30 @@ function App() {
     loadPosts();
   }, [])
 
-  async function handleAdd(){
+  useEffect(() => {
+    async function checkLogin(){
+      onAuthStateChanged(auth, (user) => {
+        if(user){
+          // se tem usuario logado ele entra aqui .....
+          console.log(user);
+          setUser(true);
+          setUserDetail({
+            uid: user.uid,
+            email: user.email
+          })
+        }else{
+          // não possui nenhum user logado.
+          setUser(false);
+          setUserDetail({})
+        }
+
+      })
+
+    }
+    checkLogin();
+  }, [])
+
+  async function handleAdd() {
     /* await setDoc(doc(db, 'posts', "12345"),{
       titulo: titulo,
       autor: autor,
@@ -49,97 +85,183 @@ function App() {
     .catch((error)=> {
       console.log("GEROU ERRO" + error)
     }) */
-    await addDoc(collection(db, "posts"),{
+    await addDoc(collection(db, "posts"), {
       titulo: titulo,
       autor: autor,
     })
-    .then(()=>{
-      console.log("CADASTRADO COM SUCESSO")
-      setAutor('');
-      setTitulo('');
-    })
-    .catch((error) => {
-      console.log("ERRO " + error)
-    })
+      .then(() => {
+        console.log("CADASTRADO COM SUCESSO")
+        setAutor('');
+        setTitulo('');
+      })
+      .catch((error) => {
+        console.log("ERRO " + error)
+      })
 
   }
 
-  async function buscarPost(){
-  /*   const postRef = doc(db, "posts", "12345")
-    await getDoc(postRef)
-    .then((snapshot) => {
-      setAutor(snapshot.data().autor)
-      setTitulo(snapshot.data().titulo)
-    })
-    .catch(() => {
-      console.log("Erro ao Buscar")
-    }) */
+  async function buscarPost() {
+    /*   const postRef = doc(db, "posts", "12345")
+      await getDoc(postRef)
+      .then((snapshot) => {
+        setAutor(snapshot.data().autor)
+        setTitulo(snapshot.data().titulo)
+      })
+      .catch(() => {
+        console.log("Erro ao Buscar")
+      }) */
     const postsRef = collection(db, "posts")
     await getDocs(postsRef)
-    .then((snapshot)=> {
-      let lista = [];
-      snapshot.forEach((doc) => {
-        lista.push({
-          id: doc.id,
-          titulo: doc.data().titulo,
-          autor: doc.data().autor,
+      .then((snapshot) => {
+        let lista = [];
+        snapshot.forEach((doc) => {
+          lista.push({
+            id: doc.id,
+            titulo: doc.data().titulo,
+            autor: doc.data().autor,
+          })
         })
+        setPosts(lista);
       })
-      setPosts(lista);
-    })
-    .catch((error) => {
-      console.log("DEU ALGUM ERRO")
-    })
+      .catch((error) => {
+        console.log("DEU ALGUM ERRO")
+      })
 
   }
 
-  async function editarPost(){
+  async function editarPost() {
     const docRef = doc(db, "posts", idPost)
     await updateDoc(docRef, {
       titulo: titulo,
       autor: autor
     })
+      .then(() => {
+        console.log("CAMPOS ATUALIZADOS")
+        setIdPost('')
+        setTitulo('')
+        setAutor('')
+      })
+      .catch(() => {
+        console.log("ERRO AO ATUALIZAR POST")
+      })
+  }
+
+  async function excluirPost(id) {
+    const docRef = doc(db, "posts", id)
+    await deleteDoc(docRef)
+      .then(() => {
+        alert("Post Deletado com Sucesso")
+      })
+  }
+
+  async function novoUsuario(){
+    createUserWithEmailAndPassword(auth, email, senha)
     .then(() => {
-      console.log("CAMPOS ATUALIZADOS")
-      setIdPost('')
-      setTitulo('')
-      setAutor('')
+      console.log("CADASTRADO COM SUCESSO!")
+      setEmail('')
+      setSenha('')
     })
-    .catch(() => {
-      console.log("ERRO AO ATUALIZAR POST")
+    .catch((error) =>{
+      if(error.code === 'auth/weak-password'){
+        alert("senha muito fraca.")
+      }else if(error.code === 'auth/email-already-in-use'){
+        alert("email já existe!")
+      }
+      console.log("ERROR AO CADASTRAR")
     })
   }
 
-  async function excluirPost(id){
-    const docRef = doc(db, "posts", id)
-    await deleteDoc(docRef)
-    .then(() => {
-      alert("Post Deletado com Sucesso")
+  async function logarUsuario(){
+    await signInWithEmailAndPassword(auth, email, senha)
+    .then((value) =>{
+      console.log("USER LOGADO COM SUCESSO!!")
+      console.log(value.user);
+      setUserDetail({
+        uid: value.user.uid,
+        email: value.user.email,
+      })
+      setUser(true);
+
+      setEmail('')
+      setSenha('')
     })
+    .catch(() =>{
+      console.log("ERROR AO FAZER O LOGIN")
+
+     
+    })
+  }
+
+  async function fazerLogout(){
+    await signOut(auth)
+    setUser(false);
+    setUserDetail({})
   }
 
   return (
     <div >
       <h1>ReactJS + Firebase :)</h1>.
+
+      { user && (
+        <div>
+          <strong>Seja bem-vindo(a) (Você esta logado!!)</strong> <br/>
+          <span>ID: {userDetail.uid} - Email: {userDetail.email}</span> <br /> <br />
+          <button onClick={fazerLogout}>Sair da  conta</button>
+          <br /> <br />
+        </div>
+
+      )}
+
       <div className="container">
 
+        <h2>Usuarios</h2>
+        
+        <label>Email</label>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Digite um Email"
+
+        /> <br /> 
+
+
+        <label>Senha</label>
+        <input
+          value={senha}
+          onChange={(e) => setSenha(e.target.value)}
+          placeholder="informe sua senha"
+        /> <br /> 
+
+        <button onClick ={novoUsuario}>Cadastrar</button>
+        <button onClick={logarUsuario}>Fazer login</button>
+        
+
+      </div>
+
+      <br />  <br />
+      <hr />
+
+      <div className="container">
+
+        <h2>POSTS</h2>
+
         <label>ID do post:</label>
-        <input 
+        <input
           placeholder='Digite o ID do post'
           value={idPost}
-          onChange={ (e) => setIdPost(e.target.value)}
-        /> <br/>
-        
+          onChange={(e) => setIdPost(e.target.value)}
+        /> <br />
+
         <label>Titulo:</label>
-        <textarea 
+        <textarea
           type="text"
           placeholder="Digite o titulo"
           value={titulo}
-          onChange={(e)=> setTitulo(e.target.value)}
+          onChange={(e) => setTitulo(e.target.value)}
         />
 
         <label>Autor:</label>
-        <input 
+        <input
           type="text"
           placeholder='Autor do post'
           value={autor}
@@ -153,18 +275,18 @@ function App() {
 
         <ul>
           {posts.map((post) => {
-            return(
+            return (
               <li key={post.id}>
                 <strong>ID: {post.id}</strong> <br />
-                <span>Titulo: {post.titulo} </span> <br/>
-                <span>Autor: {post.autor} </span> <br /> 
-                <button onClick={() => excluirPost(post.id) }>Excluir</button> <br /> <br/> 
+                <span>Titulo: {post.titulo} </span> <br />
+                <span>Autor: {post.autor} </span> <br />
+                <button onClick={() => excluirPost(post.id)}>Excluir</button> <br /> <br />
               </li>
             )
           })}
         </ul>
 
-          
+
 
       </div>
 
